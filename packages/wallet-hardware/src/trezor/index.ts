@@ -598,6 +598,18 @@ async function getTrezorWallet<T extends Chain>({
       return { ...toolbox, address };
     }
 
+    case Chain.Cardano: {
+      const { getCardanoToolbox } = await import("@swapkit/toolboxes/cardano");
+      const { getCardanoSigner } = await import("./cardanoSigner");
+
+      const connect = await import("@trezor/connect-web");
+      const signer = await getCardanoSigner({ connect, derivationPath });
+      const address = signer.getAddress();
+      const toolbox = getCardanoToolbox({ signer });
+
+      return { ...toolbox, address };
+    }
+
     case Chain.Ripple: {
       const { getRippleToolbox } = await import("@swapkit/toolboxes/ripple");
       const { getRippleSigner } = await import("./rippleSigner");
@@ -1529,6 +1541,7 @@ export const trezorWallet = createWallet({
     [Chain.BinanceSmartChain]: true,
     [Chain.Bitcoin]: true,
     [Chain.BitcoinCash]: true,
+    [Chain.Cardano]: true,
     [Chain.Dash]: true,
     [Chain.Ethereum]: true,
     [Chain.Gnosis]: true,
@@ -1558,6 +1571,7 @@ export const trezorWallet = createWallet({
     Chain.BinanceSmartChain,
     Chain.Bitcoin,
     Chain.BitcoinCash,
+    Chain.Cardano,
     Chain.Dash,
     Chain.Dogecoin,
     Chain.Ethereum,
