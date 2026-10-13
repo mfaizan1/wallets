@@ -96,7 +96,6 @@ describe("a Trezor refusing to sign a Zcash transaction", () => {
     });
   });
 
-  // Connect only resolves Zcash by its ticker when signing; "zcash" fails with Method_UnknownCoin
   it("asks Connect for the coin by its ticker", async () => {
     const wallet = await connectZcash();
 

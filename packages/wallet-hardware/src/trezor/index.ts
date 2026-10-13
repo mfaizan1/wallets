@@ -52,8 +52,6 @@ const TREZOR_TRANSPORTS = new Set<TrezorTransport>(["BridgeTransport", "WebUsbTr
 const DEFAULT_TREZOR_CORE_MODE: TrezorCoreMode = "auto";
 const DEFAULT_TREZOR_MANIFEST = { appName: "SwapKit", appUrl: "https://swapkit.dev", email: "support@swapkit.dev" };
 const DEFAULT_TREZOR_TRANSPORTS = ["WebUsbTransport" as const];
-// Connect resolves the coin by ticker when signing; the name "zcash" fails there with Method_UnknownCoin
-const TREZOR_ZCASH_COIN = "zec";
 const TREZOR_KEEP_SESSION_PARAMS = { keepSession: true } as const;
 const BITCOIN_CASH_SIGHASH_ALL = 0x41;
 const trezorXpubCache = new Map<string, TrezorExtendedPublicKeyInfo>();
@@ -498,8 +496,6 @@ type ZcashTrezorSignRequest = {
   versionGroupId: number;
 };
 
-// Device refusals carry no signed bytes, so this is the only record of what the Trezor was asked to sign:
-// enough to tell a malformed request (missing input amounts, outputs above inputs, wrong version) from a refusal
 function describeZcashSignRequest({ inputs, outputs, ...header }: ZcashTrezorSignRequest) {
   const sum = (amounts: { amount: string }[]) => amounts.reduce((total, { amount }) => total + BigInt(amount), 0n);
   const inputTotal = sum(inputs);
@@ -689,14 +685,12 @@ async function getTrezorWallet<T extends Chain>({
     case Chain.Zcash: {
       const { getUtxoToolbox } = await import("@swapkit/toolboxes/utxo");
 
+      const coin = chain.toLowerCase();
       const derivationPathStr = derivationPathToString(derivationPath);
 
       const getAddress = async () => {
         const TrezorConnect = (await import("@trezor/connect-web")).default;
-        const { success, payload } = await TrezorConnect.getAddress({
-          coin: TREZOR_ZCASH_COIN,
-          path: derivationPathStr,
-        });
+        const { success, payload } = await TrezorConnect.getAddress({ coin, path: derivationPathStr });
 
         if (!success) {
           throw new SwapKitError({
@@ -710,8 +704,23 @@ async function getTrezorWallet<T extends Chain>({
 
       const address = providedAddress ?? (await getAddress());
 
-      const signPCZTWithSerializedTx = async (pczt: PCZT) => {
+      const signWithTrezor = async (request: ZcashTrezorSignRequest, signingPath: "pczt" | "transaction") => {
         const TrezorConnect = (await import("@trezor/connect-web")).default;
+        const result = await TrezorConnect.signTransaction({ ...request, coin, overwintered: true } as Parameters<
+          typeof TrezorConnect.signTransaction
+        >[0]);
+
+        if (!result.success) {
+          throw new SwapKitError({
+            errorKey: "wallet_trezor_failed_to_sign_transaction",
+            info: { ...result.payload, chain, derivationPath, request: describeZcashSignRequest(request), signingPath },
+          });
+        }
+
+        return result.payload.serializedTx;
+      };
+
+      const signPCZTWithSerializedTx = async (pczt: PCZT) => {
         const { hex: hexEncode } = await import("@scure/base");
         const address_n = hardenDerivationPath(derivationPath);
         const global = pczt.getGlobal();
@@ -727,31 +736,9 @@ async function getTrezorWallet<T extends Chain>({
           version: global.txVersion,
           versionGroupId: global.versionGroupId,
         };
-        const result = await TrezorConnect.signTransaction({
-          ...request,
-          coin: TREZOR_ZCASH_COIN,
-          outputs: outputs as any,
-          overwintered: true,
-        });
+        const serializedTx = await signWithTrezor(request, "pczt");
 
-        if (!result.success) {
-          // Spread the whole payload: Connect is typed to fail with `error`, but the reason arrives in `message`
-          throw new SwapKitError({
-            errorKey: "wallet_trezor_failed_to_sign_transaction",
-            info: {
-              ...result.payload,
-              chain,
-              derivationPath,
-              request: describeZcashSignRequest(request),
-              signingPath: "pczt",
-            },
-          });
-        }
-
-        return {
-          serializedTx: result.payload.serializedTx,
-          signedPczt: await extractSignaturesFromSignedTx(result.payload.serializedTx, pczt),
-        };
+        return { serializedTx, signedPczt: await extractSignaturesFromSignedTx(serializedTx, pczt) };
       };
 
       const parseSignedZcashTransaction = async (signedTxHex: string) => {
@@ -760,7 +747,6 @@ async function getTrezorWallet<T extends Chain>({
       };
 
       const signZcashTransactionWithSerializedTx = async (tx: ZcashTransaction) => {
-        const TrezorConnect = (await import("@trezor/connect-web")).default;
         const { hex: hexEncode } = await import("@scure/base");
         const { NETWORKS, ZcashVersionGroupId } = await import("@swapkit/utxo-signer");
         const address_n = hardenDerivationPath(derivationPath);
@@ -783,30 +769,9 @@ async function getTrezorWallet<T extends Chain>({
           version: 4,
           versionGroupId: ZcashVersionGroupId.SAPLING,
         };
-        const result = await TrezorConnect.signTransaction({
-          ...request,
-          coin: TREZOR_ZCASH_COIN,
-          outputs: outputs as any,
-          overwintered: true,
-        });
+        const serializedTx = await signWithTrezor(request, "transaction");
 
-        if (result.success) {
-          return {
-            serializedTx: result.payload.serializedTx,
-            signedTx: await parseSignedZcashTransaction(result.payload.serializedTx),
-          };
-        }
-
-        throw new SwapKitError({
-          errorKey: "wallet_trezor_failed_to_sign_transaction",
-          info: {
-            ...result.payload,
-            chain,
-            derivationPath,
-            request: describeZcashSignRequest(request),
-            signingPath: "transaction",
-          },
-        });
+        return { serializedTx, signedTx: await parseSignedZcashTransaction(serializedTx) };
       };
 
       const signer = {
