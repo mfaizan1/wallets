@@ -81,6 +81,7 @@ describe("a Trezor refusing to sign a Zcash transaction", () => {
         expiry: 0,
         fee: "10000",
         inputAmounts: ["200000"],
+        inputs: [`${"01".repeat(32)}:0`],
         inputTotal: "200000",
         locktime: 0,
         outputs: [

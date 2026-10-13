@@ -489,7 +489,7 @@ async function buildZcashTxOutputsForTrezor({
 type ZcashTrezorSignRequest = {
   branchId: number;
   expiry: number;
-  inputs: { amount: string }[];
+  inputs: { amount: string; prev_hash: string; prev_index: number }[];
   locktime: number;
   outputs: { address?: string; amount: string; script_type: string }[];
   version: number;
@@ -505,6 +505,7 @@ function describeZcashSignRequest({ inputs, outputs, ...header }: ZcashTrezorSig
     ...header,
     fee: (inputTotal - outputTotal).toString(),
     inputAmounts: inputs.map(({ amount }) => amount),
+    inputs: inputs.map(({ prev_hash, prev_index }) => `${prev_hash}:${prev_index}`),
     inputTotal: inputTotal.toString(),
     outputs: outputs.map(({ address, amount, script_type }) => ({
       amount,
