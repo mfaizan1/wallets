@@ -410,9 +410,19 @@ async function decodeOutputAddress(script: Uint8Array): Promise<string | undefin
 }
 
 async function extractSignaturesFromSignedTx(signedTxHex: string, pczt: PCZT): Promise<PCZT> {
-  const { ZcashTransaction: ZcashTx, Script } = await import("@swapkit/utxo-signer");
+  const { ZcashTransaction: ZcashTx, Script, createPCZT } = await import("@swapkit/utxo-signer");
   const signedTx = ZcashTx.fromHex(signedTxHex, { allowUnknownOutputs: true });
-  const signedPczt = pczt.clone();
+  const signedPczt = createPCZT({
+    coinType: pczt.getGlobal().coinType,
+    consensusBranchId: signedTx.consensusBranchId,
+    expiryHeight: signedTx.expiryHeight,
+    lockTime: signedTx.lockTime,
+    version: signedTx.version,
+    versionGroupId: signedTx.versionGroupId,
+  });
+
+  for (let i = 0; i < pczt.inputsLength; i++) signedPczt.addInput(pczt.getInput(i));
+  for (let i = 0; i < pczt.outputsLength; i++) signedPczt.addOutput(pczt.getOutput(i));
 
   for (let i = 0; i < signedTx.inputsLength; i++) {
     const signedInput = signedTx.getInput(i);
@@ -723,6 +733,7 @@ async function getTrezorWallet<T extends Chain>({
 
       const signPCZTWithSerializedTx = async (pczt: PCZT) => {
         const { hex: hexEncode } = await import("@scure/base");
+        const { ZcashVersion, ZcashVersionGroupId } = await import("@swapkit/utxo-signer");
         const address_n = hardenDerivationPath(derivationPath);
         const global = pczt.getGlobal();
 
@@ -734,8 +745,8 @@ async function getTrezorWallet<T extends Chain>({
           inputs,
           locktime: global.lockTime,
           outputs,
-          version: global.txVersion,
-          versionGroupId: global.versionGroupId,
+          version: ZcashVersion.NU5,
+          versionGroupId: ZcashVersionGroupId.NU5,
         };
         const serializedTx = await signWithTrezor(request, "pczt");
 
@@ -749,7 +760,7 @@ async function getTrezorWallet<T extends Chain>({
 
       const signZcashTransactionWithSerializedTx = async (tx: ZcashTransaction) => {
         const { hex: hexEncode } = await import("@scure/base");
-        const { NETWORKS, ZcashVersionGroupId } = await import("@swapkit/utxo-signer");
+        const { NETWORKS, ZcashVersion, ZcashVersionGroupId } = await import("@swapkit/utxo-signer");
         const address_n = hardenDerivationPath(derivationPath);
 
         const inputs = buildZcashTxInputsForTrezor(tx, [], address_n, hexEncode);
@@ -763,12 +774,12 @@ async function getTrezorWallet<T extends Chain>({
 
         const request = {
           branchId: tx.consensusBranchId,
-          expiry: 0,
+          expiry: tx.expiryHeight,
           inputs,
-          locktime: 0,
+          locktime: tx.lockTime,
           outputs,
-          version: 4,
-          versionGroupId: ZcashVersionGroupId.SAPLING,
+          version: ZcashVersion.NU5,
+          versionGroupId: ZcashVersionGroupId.NU5,
         };
         const serializedTx = await signWithTrezor(request, "transaction");
 
