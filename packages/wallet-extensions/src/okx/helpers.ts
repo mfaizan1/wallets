@@ -71,6 +71,7 @@ export async function getWalletMethods(chain: Chain): Promise<WalletMethodsWithA
       .with(
         P.union(
           Chain.Arbitrum,
+          Chain.Arc,
           Chain.Aurora,
           Chain.Avalanche,
           Chain.Base,
@@ -78,9 +79,11 @@ export async function getWalletMethods(chain: Chain): Promise<WalletMethodsWithA
           Chain.BinanceSmartChain,
           Chain.Ethereum,
           Chain.Gnosis,
+          Chain.Hyperevm,
           Chain.Monad,
           Chain.Optimism,
           Chain.Polygon,
+          Chain.Robinhood,
           Chain.XLayer,
         ),
         async () => {
@@ -130,6 +133,48 @@ export async function getWalletMethods(chain: Chain): Promise<WalletMethodsWithA
         });
 
         return { ...toolbox, address };
+      })
+      .with(Chain.Solana, async () => {
+        if (!(window.okxwallet && "solana" in window.okxwallet)) {
+          throw new SwapKitError("wallet_okx_not_found", { chain: Chain.Solana });
+        }
+
+        const { getSolanaToolbox } = await import("@swapkit/toolboxes/solana");
+        const provider = window.okxwallet.solana;
+        const { publicKey } = await provider.connect();
+        const toolbox = getSolanaToolbox({ signer: provider });
+
+        return { ...toolbox, address: publicKey.toString() };
+      })
+      .with(Chain.Cardano, async () => {
+        if (!(window.okxwallet && "cardano" in window.okxwallet)) {
+          throw new SwapKitError("wallet_okx_not_found", { chain: Chain.Cardano });
+        }
+
+        const api = await window.okxwallet.cardano.enable();
+
+        if ((await api.getNetworkId()) !== 1) {
+          throw new SwapKitError("wallet_okx_chain_not_supported", { chain: Chain.Cardano, message: "Mainnet only" });
+        }
+
+        const { addCardanoVkeyWitnesses, decodeCardanoWitnessSet, getCardanoAddressFromBytes, getCardanoToolbox } =
+          await import("@swapkit/toolboxes/cardano");
+
+        const changeAddress = await api.getChangeAddress();
+        const address = changeAddress.startsWith("addr")
+          ? changeAddress
+          : await getCardanoAddressFromBytes(hex.decode(changeAddress));
+
+        const signer = {
+          address,
+          connect: () => Promise.resolve({ address }),
+          disconnect: () => Promise.resolve(),
+          getAddress: () => Promise.resolve(address),
+          signTransaction: async (transaction: string) =>
+            addCardanoVkeyWitnesses(transaction, await decodeCardanoWitnessSet(await api.signTx(transaction))),
+        };
+
+        return { ...getCardanoToolbox({ signer }), address };
       })
       .with(Chain.Cosmos, async () => {
         if (!(window.okxwallet && "keplr" in window.okxwallet)) {

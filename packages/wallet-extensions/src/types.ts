@@ -11,6 +11,12 @@ import type { Eip1193Provider } from "ethers";
 import type { NearBrowserWalletProvider } from "./helpers/near";
 import type { TronLinkWindow } from "./tronlink";
 
+export type OkxCardanoApi = {
+  getChangeAddress: () => Promise<string>;
+  getNetworkId: () => Promise<number>;
+  signTx: (transaction: string, partialSign?: boolean) => Promise<string>;
+};
+
 type UnisatToSignInputs = { index: number; sighashTypes?: number[]; disableTweakSigner?: boolean } & (
   | { address: string }
   | { publicKey: string }
@@ -129,6 +135,8 @@ declare global {
             ) => Promise<boolean>;
             getOfflineSignerOnlyAmino: (chainId: string) => OfflineAminoSigner;
           };
+          solana: SolanaProvider;
+          cardano: { enable: () => Promise<OkxCardanoApi> };
           near: NearBrowserWalletProvider & {
             requestSignIn: (params?: {
               contractId?: string;
