@@ -107,6 +107,7 @@ const LEDGER_SUPPORTED_CHAINS_CONFIG = [
   Chain.Polygon,
   Chain.Ripple,
   Chain.Robinhood,
+  Chain.Stellar,
   Chain.Sui,
   Chain.THORChain,
   Chain.Ton,
@@ -198,6 +199,7 @@ export const ledgerWallet = createWallet({
     [Chain.Polygon]: true,
     [Chain.Ripple]: true,
     [Chain.Robinhood]: true,
+    [Chain.Stellar]: true,
     [Chain.Sui]: true,
     [Chain.THORChain]: true,
     [Chain.Ton]: true,
@@ -688,6 +690,21 @@ async function getRippleWalletMethods({
   return { ...toolbox, address };
 }
 
+async function getStellarWalletMethods({
+  chain,
+  derivationPath,
+  dmkSession,
+  onDeviceActionState,
+  transport,
+}: WalletMethodsParams<Chain.Stellar>) {
+  const { getStellarToolbox } = await import("@swapkit/toolboxes/stellar");
+  const signer = await getLedgerClient({ chain, derivationPath, dmkSession, onDeviceActionState, transport });
+  const address = await getLedgerAddress({ chain, ledgerClient: signer });
+  const toolbox = getStellarToolbox({ signer });
+
+  return { ...toolbox, address };
+}
+
 async function getTronWalletMethods({
   chain,
   derivationPath,
@@ -771,6 +788,7 @@ function getWalletMethods(params: WalletMethodsParams) {
     .with(Chain.THORChain, (chain) => getTHORChainWalletMethods({ ...params, chain }))
     .with(Chain.Near, (chain) => getNearWalletMethods({ ...params, chain }))
     .with(Chain.Ripple, (chain) => getRippleWalletMethods({ ...params, chain }))
+    .with(Chain.Stellar, (chain) => getStellarWalletMethods({ ...params, chain }))
     .with(Chain.Cardano, (chain) => getCardanoWalletMethods({ ...params, chain }))
     .with(Chain.Tron, (chain) => getTronWalletMethods({ ...params, chain }))
     .with(Chain.Sui, (chain) => getSuiWalletMethods({ ...params, chain }))
